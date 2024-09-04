@@ -19,9 +19,12 @@ import {
     clearCompileErrors,
     setRuntimeOptionsState,
     setInterpolationState,
-    setHasCloudVariables
+    setHasCloudVariables,
+    setPlatformMismatchDetails
 } from '../reducers/tw';
 import {setCustomStageSize} from '../reducers/custom-stage-size';
+import {openUnknownPlatformModal} from '../reducers/modals';
+import implementGuiAPI from './tw-extension-gui-api';
 
 let compileErrorCounter = 0;
 
@@ -71,6 +74,8 @@ const vmListenerHOC = function (WrappedComponent) {
             this.props.vm.on('COMPILE_ERROR', this.handleCompileError);
             this.props.vm.on('RUNTIME_STARTED', this.props.onClearCompileErrors);
             this.props.vm.on('STAGE_SIZE_CHANGED', this.props.onStageSizeChanged);
+            this.props.vm.on('CREATE_UNSANDBOXED_EXTENSION_API', implementGuiAPI);
+            this.props.vm.runtime.on('PLATFORM_MISMATCH', this.props.onPlatformMismatch);
         }
         componentDidMount () {
             if (this.props.attachKeyboardEvents) {
@@ -91,11 +96,35 @@ const vmListenerHOC = function (WrappedComponent) {
             }
         }
         componentWillUnmount () {
-            this.props.vm.removeListener('PERIPHERAL_CONNECTION_LOST_ERROR', this.props.onShowExtensionAlert);
             if (this.props.attachKeyboardEvents) {
                 document.removeEventListener('keydown', this.handleKeyDown);
                 document.removeEventListener('keyup', this.handleKeyUp);
             }
+
+            this.props.vm.off('targetsUpdate', this.handleTargetsUpdate);
+            this.props.vm.off('MONITORS_UPDATE', this.props.onMonitorsUpdate);
+            this.props.vm.off('BLOCK_DRAG_UPDATE', this.props.onBlockDragUpdate);
+            this.props.vm.off('TURBO_MODE_ON', this.props.onTurboModeOn);
+            this.props.vm.off('TURBO_MODE_OFF', this.props.onTurboModeOff);
+            this.props.vm.off('PROJECT_RUN_START', this.props.onProjectRunStart);
+            this.props.vm.off('PROJECT_RUN_STOP', this.props.onProjectRunStop);
+            this.props.vm.off('PROJECT_CHANGED', this.handleProjectChanged);
+            this.props.vm.off('RUNTIME_STARTED', this.props.onRuntimeStarted);
+            this.props.vm.off('RUNTIME_STOPPED', this.props.onRuntimeStopped);
+            this.props.vm.off('PROJECT_START', this.props.onGreenFlag);
+            this.props.vm.off('PERIPHERAL_CONNECTION_LOST_ERROR', this.props.onShowExtensionAlert);
+            this.props.vm.off('MIC_LISTENING', this.props.onMicListeningUpdate);
+            this.props.vm.off('MIC_LISTENING', this.props.onMicListeningUpdate);
+            this.props.vm.off('HAS_CLOUD_DATA_UPDATE', this.handleCloudDataUpdate);
+            this.props.vm.off('COMPILER_OPTIONS_CHANGED', this.props.onCompilerOptionsChanged);
+            this.props.vm.off('RUNTIME_OPTIONS_CHANGED', this.props.onRuntimeOptionsChanged);
+            this.props.vm.off('FRAMERATE_CHANGED', this.props.onFramerateChanged);
+            this.props.vm.off('INTERPOLATION_CHANGED', this.props.onInterpolationChanged);
+            this.props.vm.off('COMPILE_ERROR', this.handleCompileError);
+            this.props.vm.off('RUNTIME_STARTED', this.props.onClearCompileErrors);
+            this.props.vm.off('STAGE_SIZE_CHANGED', this.props.onStageSizeChanged);
+            this.props.vm.off('CREATE_UNSANDBOXED_EXTENSION_API', implementGuiAPI);
+            this.props.vm.runtime.off('PLATFORM_MISMATCH', this.props.onPlatformMismatch);
         }
         handleCloudDataUpdate (hasCloudVariables) {
             if (this.props.hasCloudVariables !== hasCloudVariables) {
@@ -105,15 +134,11 @@ const vmListenerHOC = function (WrappedComponent) {
         // tw: handling for compile errors
         handleCompileError (target, error) {
             const errorMessage = `${error}`;
-            // Ignore certain types of known errors
-            // TODO: fix the root cause of all of these
-            if (errorMessage.includes('edge-activated hat')) {
-                return;
-            }
             // Ignore intentonal errors
             if (errorMessage.includes('Script explicitly disables compilation')) {
                 return;
             }
+
             this.props.onCompileError({
                 sprite: target.getName(),
                 error: errorMessage,
@@ -198,6 +223,7 @@ const vmListenerHOC = function (WrappedComponent) {
                 onFramerateChanged,
                 onInterpolationChanged,
                 onCompilerOptionsChanged,
+                onPlatformMismatch,
                 onRuntimeOptionsChanged,
                 onStageSizeChanged,
                 onCompileError,
@@ -232,6 +258,7 @@ const vmListenerHOC = function (WrappedComponent) {
         onFramerateChanged: PropTypes.func.isRequired,
         onInterpolationChanged: PropTypes.func.isRequired,
         onCompilerOptionsChanged: PropTypes.func.isRequired,
+        onPlatformMismatch: PropTypes.func.isRequired,
         onRuntimeOptionsChanged: PropTypes.func.isRequired,
         onStageSizeChanged: PropTypes.func,
         onCompileError: PropTypes.func,
@@ -281,6 +308,10 @@ const vmListenerHOC = function (WrappedComponent) {
         onFramerateChanged: framerate => dispatch(setFramerateState(framerate)),
         onInterpolationChanged: interpolation => dispatch(setInterpolationState(interpolation)),
         onCompilerOptionsChanged: options => dispatch(setCompilerOptionsState(options)),
+        onPlatformMismatch: (platform, callback) => {
+            dispatch(setPlatformMismatchDetails(platform, callback));
+            dispatch(openUnknownPlatformModal());
+        },
         onRuntimeOptionsChanged: options => dispatch(setRuntimeOptionsState(options)),
         onStageSizeChanged: (width, height) => dispatch(setCustomStageSize(width, height)),
         onCompileError: errors => dispatch(addCompileError(errors)),
